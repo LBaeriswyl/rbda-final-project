@@ -1,0 +1,10 @@
+# Open Hive with:
+beeline -u jdbc:hive2://localhost:10000
+# Create external table in Hive with:
+create external table if not exists table_name (col_1_name col_1_data_type, col_2_name col_2_data_type) row format delimited fields terminated by ',' location '/user/user_ID_nyu_edu/Final-Project/<name-of-data-folder>';
+e.g. create external table if not exists mta_turnstile_data (station_id string, device_address string, datetime timestamp, station_name string, division_owner string, line_names string, num_entries int, num_exits int) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/cleaned-mta-turnstile-data/';
+
+# Access data via Trino; run
+presto
+# In presto, run
+use user_ID_nyu_edu;

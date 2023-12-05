@@ -1,1 +1,6 @@
+# To modify file permissions:
+hadoop fs -setfacl -R -m user:<ID-of-user-to-be-added>:rwx /user/<file-owning-user>/<target-folder>
+hadoop fs -setfacl -R -m default:user:<ID-of-user-to-be-added>:rwx /user/<file-owning-user>/<target-folder>
+
+# Opens higher-level directory's navigation permission so that subdirectories can be accessed
 hadoop fs -setfacl -m user:bc2611_nyu_edu:--x /user/lvb243_nyu_edu

@@ -1,0 +1,1 @@
+hadoop fs -setfacl -m user:bc2611_nyu_edu:--x /user/lvb243_nyu_edu

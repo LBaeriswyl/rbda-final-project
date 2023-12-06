@@ -46,6 +46,7 @@ use hive.user_ID_nyu_edu;
 			group by station_id
 			order by station_id;
 
+
 -- To find total usage of stations:
 	-- Created intermediate table of total usage by station ID (note: some stations of the same name have multiple associated station IDs):
 	create table total_station_usage_by_id as
@@ -67,13 +68,17 @@ use hive.user_ID_nyu_edu;
 			using (station_id)
 			group by station_name;
 
+
 -- To find lines with high usage:
-	-- Created intermediate table of all lines in system with which to make references in further queries
+	-- Aggregate the number of entries and exits for all stations served by a given line
 	-- unnest expands each element of an array into its own row, and cross join returns the Cartesian product of the two tables
 	-- unnest_table (line_name) aliases the unnest statement as a table with name unnest_table containing a column with name (line_name)
-	create table subway_lines as select distinct line_name from mta_turnstile_data cross join unnest(regexp_extract_all(line_names, '.')) as unnest_table (line_name);
+	select line_name, sum(num_entries) as num_entries, sum(num_exits) as num_exits
+		from mta_turnstile_data
+		cross join unnest(regexp_extract_all(line_names, '.')) as unnest_table (line_name)
+		group by line_name
+		order by line_name;
 
-	-- 
 
 -- To attach geographic coordinates (latitude, longitude) to station names:
 	-- Because station IDs differ between the two datasets and station names sometimes differ in their formatting, we use the Levenshtein distance to judge whether two stations are identical (alternatives are soundex() to compare phonetic differences in strings (unfortunately not available on Dataproc's installation of Trino) and difference() to compare soundex results (also not available on Dataproc))

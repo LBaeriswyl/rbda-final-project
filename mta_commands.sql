@@ -1,11 +1,17 @@
 -- Open Hive with:
-beeline -u jdbc:hive2://localhost:10000
+	beeline -u jdbc:hive2://localhost:10000
+
 -- To set up the execution environment, run:
-set hive.execution.engine=mr; set hive.fetch.task.conversion=minimal; use <username>
--- Created external table cleaned_mta_turnstile_data in Hive with:
-create external table if not exists cleaned_mta_turnstile_data (remote_id string, device_address string, datetime timestamp, station_name string, division_owner string, line_names string, num_entries int, num_exits int) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/cleaned-mta-turnstile-data/';
--- Created external table raw_mta_geo_station_data in Hive with:
-create external table if not exists raw_mta_geo_station_data (GTFS_stop_ID string, remote_id int, complex_id int, division_owner string, line_names string, station_name string, borough string, daytime_routes string, station_structure string, GTFS_latitude double, GTFS_longitude double, north_dir_label string, south_dir_label string, ADA_accessibility int, ADA_north_accessibility int, ADA_South_accessibility int, ADA_notes string, georef string) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/raw-mta-geo-station-data/';
+	set hive.execution.engine=mr; set hive.fetch.task.conversion=minimal; use <username>
+
+-- Create external table cleaned_mta_turnstile_data from cleaned MTA turnstile data:
+	create external table if not exists cleaned_mta_turnstile_data (remote_id string, device_address string, datetime timestamp, station_name string, division_owner string, line_names string, num_entries int, num_exits int) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/cleaned-mta-turnstile-data/';
+
+-- Create external table cleaned_mta_geo_station_data from cleaned station data to match stationstations to latitude and longitude coordinates, pretty-printed station names and correct subway lines in sorted order
+	create external table if not exists cleaned_mta_geo_station_data (complex_id int, division_owner string, station_name string, line_names string, GTFS_latitude double, GTFS_longitude double) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/cleaned-mta-geo-station-data/';
+
+-- Create external table raw_mta_remote_complex_lookup that links remote station unit IDs to station complex IDs
+create external table if not exists raw_mta_remote_complex_lookup (remote_id string, booth_id string, complex_id int, station_name string, line_names string, division_owner string) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/raw-mta-remote-complex-lookup/';
 
 
 -- Access data via Trino; run
@@ -15,23 +21,34 @@ use hive.user_ID_nyu_edu;
 
 -- Queries:
 
--- Create table for use with actual turnstile queries that drops all rows relating to non-subway stations
-	create table mta_turnstile_data as
-		select * from cleaned_mta_turnstile_data
+-- Create table of station geographic locations that excludes all rows relating to non-subway stations
+	create table mta_geo_station_data as
+		select * from cleaned_mta_geo_station_data
 		where regexp_like(division_owner, 'BMT|IND|IRT');
 
--- Create table for use with actual station queries that drops all rows relating to non-subway stations
-	create table mta_geo_station_data as
-		select * from raw_mta_geo_station_data
+-- Create lookup table of remote unit IDs to station complex IDs
+	create table mta_remote_complex_lookup as
+		select * from raw_mta_remote_complex_lookup
 		where regexp_like(division_owner, 'BMT|IND|IRT')
-		and remote_id is not null;
+		and complex_id is not null;
+
+-- Create table for use with actual turnstile queries that drops all rows relating to non-subway stations and that has for every station geographic coordinates (latitude, longitude); nicely formatted station names (from mta_geo_station_data); and a correct, sorted list of servicing lines (from mta_geo_station_data)
+	-- Inner join mta_turnstile_data to mta_remote_complex_lookup on remote unit IDs, which joins to mta_geo_station_data on station complex IDs; as statements after the second argument of type table of an inner join provide an alias for said second argument
+	create table mta_turnstile_data as
+		select remote_id, device_address, datetime, geo_lookup.station_name, complex_id, geo_lookup.division_owner, geo_lookup.line_names, num_entries, num_exits, gtfs_latitude, gtfs_longitude from cleaned_mta_turnstile_data
+			inner join (select remote_id, complex_id, geo.division_owner, geo.line_names, geo.station_name, gtfs_latitude, gtfs_longitude
+				from mta_remote_complex_lookup
+				inner join (select complex_id, division_owner, line_names, station_name, gtfs_latitude, gtfs_longitude
+					from raw_mta_geo_station_data) as geo
+				using (complex_id)) as geo_lookup
+			using (remote_id);
 
 -- To find information by station about the average number of entries at a given station at a given time of day:
 
 	-- Created intermediate table of station usage binned by hour; number of hours may be unevenly distributed because new counter values are only pushed to database once every 4 hours
 		-- Arbitrary() function calls are used to allow grouping by one column's values and aggregation of all other columns; for remote_id, does not affect results because subqueries already guarantee unique values of hour and num_entries for each remote_id, while station_name, division_owner and line_names are tied to each remote_id already
 		-- NB: Adding "order by remote_id" in selection subquery had no effect
-	create table avg_station_usage_by_hour as select remote_id, arbitrary(station_name) as station_name, arbitrary(division_owner) as division_owner, arbitrary(line_names) as line_names, hour(datetime) as hour, avg(num_entries) as num_entries, avg(num_exits) as num_exits
+	create table avg_station_usage_by_hour as select remote_id, arbitrary(station_name) as station_name, arbitrary(division_owner) as division_owner, arbitrary(line_names) as line_names, hour(datetime) as hour, avg(num_entries) as num_entries, avg(num_exits) as num_exits, arbitrary(gtfs_latitude) as latitude, arbitrary(gtfs_longitude) as longitude
 		from mta_turnstile_data
 		where num_entries >=0 and num_exits >=0
 		group by remote_id, hour(datetime);
@@ -64,13 +81,3 @@ use hive.user_ID_nyu_edu;
 		where num_entries >=0 and num_exits >=0
 		group by line_name
 		order by line_name;
-
-
--- To attach geographic coordinates (latitude, longitude) to station names:
-	-- Because station IDs differ between the two datasets and station names sometimes differ in their formatting, we use the Levenshtein distance to judge whether two stations are identical (alternatives are soundex() to compare phonetic differences in strings (unfortunately not available on Dataproc's installation of Trino) and difference() to compare soundex results (also not available on Dataproc))
-	-- Given the ease with which short names agree (e.g. 7 AV vs. 30 AV), the edit distance for which a station can be considered to agree must vary with the length of the station name
-	select *
-		from mta_turnstile_data turn
-		join (select station_name, gtfs_latitude, gtfs_longitude
-			from mta_geo_station_data) sta
-		on levenshtein_distance(turn.station_name, sta.station_name) < 2;

@@ -7,11 +7,11 @@
 -- Create external table cleaned_mta_turnstile_data from cleaned MTA turnstile data:
 	create external table if not exists cleaned_mta_turnstile_data (remote_id string, device_address string, datetime timestamp, station_name string, division_owner string, line_names string, num_entries int, num_exits int) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/cleaned-mta-turnstile-data/';
 
--- Create external table cleaned_mta_geo_station_data from cleaned station data to match stationstations to latitude and longitude coordinates, pretty-printed station names and correct subway lines in sorted order
-	create external table if not exists cleaned_mta_geo_station_data (complex_id int, division_owner string, station_name string, line_names string, GTFS_latitude double, GTFS_longitude double) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/cleaned-mta-geo-station-data/';
-
 -- Create external table raw_mta_remote_complex_lookup that links remote station unit IDs to station complex IDs
 	create external table if not exists raw_mta_remote_complex_lookup (remote_id string, booth_id string, complex_id int, station_name string, line_names string, division_owner string) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/raw-mta-remote-complex-lookup/';
+
+-- Create external table cleaned_mta_geo_station_data from cleaned station data to match stationstations to latitude and longitude coordinates, pretty-printed station names and correct subway lines in sorted order; must be run af
+	create external table if not exists cleaned_mta_geo_station_data (complex_id int, division_owner string, station_name string, line_names string, GTFS_latitude double, GTFS_longitude double) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/cleaned-mta-geo-station-data/';
 
 
 -- Access data via Trino; run
@@ -22,12 +22,12 @@
 -- Queries:
 
 -- Create table of station geographic locations that excludes all rows relating to non-subway stations
-	create table mta_geo_station_data as
+	create table if not exists mta_geo_station_data as
 		select * from cleaned_mta_geo_station_data
 		where regexp_like(division_owner, 'BMT|IND|IRT');
 
 -- Create lookup table of remote unit IDs to station complex IDs
-	create table mta_remote_complex_lookup as
+	create table if not exists mta_remote_complex_lookup as
 		select * from raw_mta_remote_complex_lookup
 		where regexp_like(division_owner, 'BMT|IND|IRT')
 		and complex_id is not null;

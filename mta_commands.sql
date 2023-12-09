@@ -1,9 +1,11 @@
 -- Open Hive with:
 beeline -u jdbc:hive2://localhost:10000
--- Created external table mta_turnstile_data in Hive with:
-create external table if not exists mta_turnstile_data (station_id string, device_address string, datetime timestamp, station_name string, division_owner string, line_names string, num_entries int, num_exits int) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/cleaned-mta-turnstile-data/';
--- Created external table mta_station_data in Hive with:
-create external table if not exists mta_turnstile_data (station_id int, complex_id int, GTFS_stop_ID string, division_owner string, line_names string, station_name string, borough string, daytime_routes string, station_structure string, GTFS_latitude double, GTFS_longitude double, north_dir_label string, south_dir_label string, ADA_accessibility int, ADA_notes string) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/MTA_Subway_Stations.csv';
+-- To set up the execution environment, run:
+set hive.execution.engine=mr; set hive.fetch.task.conversion=minimal; use <username>
+-- Created external table cleaned_mta_turnstile_data in Hive with:
+create external table if not exists cleaned_mta_turnstile_data (remote_id string, device_address string, datetime timestamp, station_name string, division_owner string, line_names string, num_entries int, num_exits int) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/cleaned-mta-turnstile-data/';
+-- Created external table raw_mta_geo_station_data in Hive with:
+create external table if not exists raw_mta_geo_station_data (GTFS_stop_ID string, remote_id int, complex_id int, division_owner string, line_names string, station_name string, borough string, daytime_routes string, station_structure string, GTFS_latitude double, GTFS_longitude double, north_dir_label string, south_dir_label string, ADA_accessibility int, ADA_north_accessibility int, ADA_South_accessibility int, ADA_notes string, georef string) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/raw-mta-geo-station-data/';
 
 
 -- Access data via Trino; run
@@ -13,73 +15,62 @@ use hive.user_ID_nyu_edu;
 
 -- Queries:
 
--- To find information by station about the total number of entries at a given station at a given time of day:
+-- Create table for use with actual turnstile queries that drops all rows relating to non-subway stations
+	create table mta_turnstile_data as
+		select * from cleaned_mta_turnstile_data
+		where regexp_like(division_owner, 'BMT|IND|IRT');
+
+-- Create table for use with actual station queries that drops all rows relating to non-subway stations
+	create table mta_geo_station_data as
+		select * from raw_mta_geo_station_data
+		where regexp_like(division_owner, 'BMT|IND|IRT')
+		and remote_id is not null;
+
+-- To find information by station about the average number of entries at a given station at a given time of day:
 
 	-- Created intermediate table of station usage binned by hour; number of hours may be unevenly distributed because new counter values are only pushed to database once every 4 hours
-		-- NB: Adding "order by station_id" in selection subquery had no effect
-	create table total_station_usage_by_hour as select station_id, hour(datetime) as hour, sum(num_entries) as num_entries, sum(num_exits) as num_exits
+		-- Arbitrary() function calls are used to allow grouping by one column's values and aggregation of all other columns; for remote_id, does not affect results because subqueries already guarantee unique values of hour and num_entries for each remote_id, while station_name, division_owner and line_names are tied to each remote_id already
+		-- NB: Adding "order by remote_id" in selection subquery had no effect
+	create table avg_station_usage_by_hour as select remote_id, arbitrary(station_name) as station_name, arbitrary(division_owner) as division_owner, arbitrary(line_names) as line_names, hour(datetime) as hour, avg(num_entries) as num_entries, avg(num_exits) as num_exits
 		from mta_turnstile_data
-		group by station_id, hour(datetime);
+		where num_entries >=0 and num_exits >=0
+		group by remote_id, hour(datetime);
 
 	-- To find information by station about the busiest time of day
-		-- Arbitrary() function calls are used to allow grouping by station_id and aggregation of all other columns; does not affect results because subqueries already guarantee unique values of hour and num_entries for each station_id, while station_name, division_owner and line_names are tied to each station_id already
 		-- By number of entries:
-		select station_id, arbitrary(hour) as hour, arbitrary(station_name) as station_name, arbitrary(division_owner) as division_owner, arbitrary(line_names) as line_names, arbitrary(tab1.num_entries) as num_entries
-			from mta_turnstile_data
-			inner join (select * from total_station_usage_by_hour
-				inner join (select station_id, max(num_entries) as num_entries
-					from total_station_usage_by_hour
-					group by station_id)
-				using (station_id, num_entries)) tab1
-			using (station_id)
-			group by station_id
-			order by station_id;
+			select * from avg_station_usage_by_hour
+			inner join (select remote_id, max(num_entries) as num_entries
+				from avg_station_usage_by_hour
+				group by remote_id)
+			using (remote_id, num_entries)
+			order by remote_id;
+
 		-- By number of exits:
-		select station_id, arbitrary(hour) as hour, arbitrary(station_name) as station_name, arbitrary(division_owner) as division_owner, arbitrary(line_names) as line_names, arbitrary(tab1.num_exits) as num_exits
-			from mta_turnstile_data
-			inner join (select * from total_station_usage_by_hour
-				inner join (select station_id, max(num_exits) as num_exits
-					from total_station_usage_by_hour
-					group by station_id)
-				using (station_id, num_exits)) tab1
-			using (station_id)
-			group by station_id
-			order by station_id;
-
-
--- To find total usage of stations:
-	-- Created intermediate table of total usage by station ID (note: some stations of the same name have multiple associated station IDs):
-	create table total_station_usage_by_id as
-		select station_id, arbitrary(station_name) as station_name, arbitrary(division_owner) as division_owner, arbitrary(line_names) as line_names, arbitrary(tab1.num_entries) as num_entries, arbitrary(tab1.num_exits) as num_exits
-			from mta_turnstile_data turn
-			inner join (select station_id, sum(num_entries) as num_entries, sum(num_exits) as num_exits
-				from mta_turnstile_data
-				group by station_id) tab1
-			using (station_id)
-			group by station_id;
-
-	-- Created intermediate table of total usage by station name (note: some stations have multiple formattings of what is effectively the same name):
-	create table total_station_usage_by_name as
-		select arbitrary(station_id) as station_id, station_name, arbitrary(division_owner) as division_owner, arbitrary(line_names) as line_names, arbitrary(tab1.num_entries) as num_entries, arbitrary(tab1.num_exits) as num_exits
-			from mta_turnstile_data turn
-			inner join (select station_id, sum(num_entries) as num_entries, sum(num_exits) as num_exits
-				from mta_turnstile_data
-				group by station_id) tab1
-			using (station_id)
-			group by station_name;
+			select * from avg_station_usage_by_hour
+			inner join (select remote_id, max(num_exits) as num_exits
+				from avg_station_usage_by_hour
+				group by remote_id)
+			using (remote_id, num_exits)
+			order by remote_id;
 
 
 -- To find lines with high usage:
-	-- Aggregate the number of entries and exits for all stations served by a given line
+	-- Aggregate the average number of entries and exits for all stations served by a given line
 	-- unnest expands each element of an array into its own row, and cross join returns the Cartesian product of the two tables
 	-- unnest_table (line_name) aliases the unnest statement as a table with name unnest_table containing a column with name (line_name)
-	select line_name, sum(num_entries) as num_entries, sum(num_exits) as num_exits
+	select line_name, avg(num_entries) as num_entries, avg(num_exits) as num_exits
 		from mta_turnstile_data
 		cross join unnest(regexp_extract_all(line_names, '.')) as unnest_table (line_name)
+		where num_entries >=0 and num_exits >=0
 		group by line_name
 		order by line_name;
 
 
 -- To attach geographic coordinates (latitude, longitude) to station names:
 	-- Because station IDs differ between the two datasets and station names sometimes differ in their formatting, we use the Levenshtein distance to judge whether two stations are identical (alternatives are soundex() to compare phonetic differences in strings (unfortunately not available on Dataproc's installation of Trino) and difference() to compare soundex results (also not available on Dataproc))
-	select * from mta_turnstile_data turn join (select station_name, gtfs_latitude, gtfs_longitude from mta_station_data) sta on levenshtein_distance(turn.station_name, sta.station_name) < 2;
+	-- Given the ease with which short names agree (e.g. 7 AV vs. 30 AV), the edit distance for which a station can be considered to agree must vary with the length of the station name
+	select *
+		from mta_turnstile_data turn
+		join (select station_name, gtfs_latitude, gtfs_longitude
+			from mta_geo_station_data) sta
+		on levenshtein_distance(turn.station_name, sta.station_name) < 2;

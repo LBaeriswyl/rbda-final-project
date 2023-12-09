@@ -11,13 +11,13 @@
 	create external table if not exists cleaned_mta_geo_station_data (complex_id int, division_owner string, station_name string, line_names string, GTFS_latitude double, GTFS_longitude double) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/cleaned-mta-geo-station-data/';
 
 -- Create external table raw_mta_remote_complex_lookup that links remote station unit IDs to station complex IDs
-create external table if not exists raw_mta_remote_complex_lookup (remote_id string, booth_id string, complex_id int, station_name string, line_names string, division_owner string) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/raw-mta-remote-complex-lookup/';
+	create external table if not exists raw_mta_remote_complex_lookup (remote_id string, booth_id string, complex_id int, station_name string, line_names string, division_owner string) row format delimited fields terminated by ',' location '/user/bc2611_nyu_edu/Final-Project/raw-mta-remote-complex-lookup/';
 
 
 -- Access data via Trino; run
-presto
+	presto
 -- In presto, run
-use hive.user_ID_nyu_edu;
+	use hive.user_ID_nyu_edu;
 
 -- Queries:
 

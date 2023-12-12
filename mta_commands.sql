@@ -46,29 +46,29 @@
 -- To find information by station about the average number of entries at a given station at a given time of day:
 
 	-- Created intermediate table of station usage binned by hour; number of hours may be unevenly distributed because new counter values are only pushed to database once every 4 hours
-		-- Arbitrary() function calls are used to allow grouping by one column's values and aggregation of all other columns; for remote_id, does not affect results because subqueries already guarantee unique values of hour and num_entries for each remote_id, while station_name, division_owner and line_names are tied to each remote_id already
-		-- NB: Adding "order by remote_id" in selection subquery had no effect
-	create table if not exists avg_station_usage_by_hour as select remote_id, arbitrary(station_name) as station_name, arbitrary(division_owner) as division_owner, arbitrary(line_names) as line_names, hour(datetime) as hour, avg(num_entries) as num_entries, avg(num_exits) as num_exits, arbitrary(gtfs_latitude) as latitude, arbitrary(gtfs_longitude) as longitude
+		-- Arbitrary() function calls are used to allow grouping by one column's values and aggregation of all other columns; for complex_id, does not affect results because aggregations already guarantee unique values of hour and num_entries for each complex_id, while station_name, division_owner and line_names are tied to each complex_id already
+		-- NB: Adding "order by complex_id" in selection subquery had no effect
+	create table if not exists avg_station_usage_by_hour as select complex_id, arbitrary(station_name) as station_name, arbitrary(division_owner) as division_owner, arbitrary(line_names) as line_names, hour(datetime) as hour, avg(num_entries) as num_entries, avg(num_exits) as num_exits, arbitrary(gtfs_latitude) as latitude, arbitrary(gtfs_longitude) as longitude
 		from mta_turnstile_data
 		where num_entries >=0 and num_exits >=0
-		group by remote_id, hour(datetime);
+		group by complex_id, hour(datetime);
 
 	-- To find information by station about the busiest time of day
 		-- By number of entries:
 			select * from avg_station_usage_by_hour
-			inner join (select remote_id, max(num_entries) as num_entries
+			inner join (select complex_id, max(num_entries) as num_entries
 				from avg_station_usage_by_hour
-				group by remote_id)
-			using (remote_id, num_entries)
-			order by remote_id;
+				group by complex_id)
+			using (complex_id, num_entries)
+			order by complex_id;
 
 		-- By number of exits:
 			select * from avg_station_usage_by_hour
-			inner join (select remote_id, max(num_exits) as num_exits
+			inner join (select complex_id, max(num_exits) as num_exits
 				from avg_station_usage_by_hour
-				group by remote_id)
-			using (remote_id, num_exits)
-			order by remote_id;
+				group by complex_id)
+			using (complex_id, num_exits)
+			order by complex_id;
 
 
 -- To find lines with high usage:

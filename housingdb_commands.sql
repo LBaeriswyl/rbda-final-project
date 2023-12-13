@@ -42,3 +42,62 @@ FROM housing_data_inactive_included_from_csv;
 
 -- test contents were loaded correctly
 select * from housing_data_inactive_included_from_csv limit 1;
+
+
+---find total rows
+Select count(*) from housing_data_inactive_included;
+
+---find rows with matching dob_permit entries
+WITH dob_zip AS (
+  SELECT bin, max(zip_code) as zip_code
+  FROM dob_data
+  GROUP BY bin
+)
+Select count(*) from housing_data_inactive_included h
+inner join dob_zip d on h.building_identification_number = d.bin;
+
+---find rows per year
+SELECT completion_year, count(*) as count
+FROM housing_data_inactive_included
+WHERE job_status = 5 AND residFlag = true
+GROUP BY completion_year
+ORDER BY completion_year DESC;
+
+---find units per year
+SELECT d.zip_code, SUM(h.class_a_net) as new_units
+FROM housing_data_inactive_included h
+INNER JOIN dob_data d on h.building_identification_number = d.bin
+WHERE h.job_status = 5 AND h.residFlag = true AND h.completion_year > '2020'
+GROUP BY d.zip_code
+ORDER BY new_units DESC;
+
+---find new units per year per borough
+
+
+--find new units since 2020 per zip code
+WITH dob_zip AS (
+  SELECT bin, max(zip_code) as zip_code
+  FROM dob_data
+  GROUP BY bin
+)
+SELECT d.zip_code, SUM(h.class_a_net) as new_units
+FROM housing_data_inactive_included h
+INNER JOIN dob_zip d on h.building_identification_number = d.bin
+WHERE h.job_status = 5 AND h.residFlag = true AND h.completion_year > '2020'
+GROUP BY d.zip_code
+ORDER BY new_units DESC;
+
+--find planned new units since 2020 per zip code
+WITH dob_zip AS (
+  SELECT bin, max(zip_code) as zip_code
+  FROM dob_data
+  GROUP BY bin
+)
+SELECT d.zip_code, SUM(h.class_a_net) as new_units
+FROM housing_data_inactive_included h
+INNER JOIN dob_zip d on h.building_identification_number = d.bin
+WHERE h.job_status = 3 AND h.residFlag = true AND h.permit_year > '2020'
+GROUP BY d.zip_code
+ORDER BY new_units DESC;
+
+

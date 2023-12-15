@@ -1,0 +1,103 @@
+//creating a test set on local machine
+head -20 DOB_Permit_Issuance_20231203.csv >> DOB_Permit_Issuance_Test_Set.csv
+
+//creating test and project directory on hdfs
+hadoop fs -mkdir project-test
+hadoop fs -mkdir project
+
+//moving the test set to testing directory in hdfs
+hadoop fs -put DOB_Permit_Issuance_Test_Set.csv project-test
+
+//moving ingested file to project directory
+hadoop distcp gs://nyu-dataproc-hdfs-ingest/DOB_Permit_Issuance_20231203.csv /user/lvb243_nyu_edu/project
+
+//compile and run the MissingStatistics mapreduce program
+//from inside MissingStatistics directory
+javac -classpath `hadoop classpath` *.java
+jar cvf MissingStatistics.jar *.class
+hadoop jar MissingStatistics.jar MissingStatistics project/DOB_Permit_Issuance_20231203.csv project/missing_stats
+
+//compile and run the ColumnFilter mapreduce program to clean the dataset
+//from inside the ColumnFilter directory
+hadoop fs -rm -r project/DOB_Permit_Issuance_Cleaned
+javac -classpath `hadoop classpath` *.java
+jar cvf ColumnFilter.jar *.class
+hadoop jar ColumnFilter.jar ColumnFilter project/DOB_Permit_Issuance_20231203.csv project/DOB_Permit_Issuance_Cleaned
+
+//compile and run the FindDistinctAndCount mapreduce program to find the counts for each category
+//from inside the FindDistinctAndCount directory
+//run for each column of interest
+javac -classpath `hadoop classpath` *.java
+jar cvf FindDistinctAndCount.jar *.class
+hadoop jar FindDistinctAndCount.jar FindDistinctAndCount project/DOB_Permit_Issuance_Cleaned project/counts_borough 0
+hadoop jar FindDistinctAndCount.jar FindDistinctAndCount project/DOB_Permit_Issuance_Cleaned project/counts_job_type 6
+hadoop jar FindDistinctAndCount.jar FindDistinctAndCount project/DOB_Permit_Issuance_Cleaned project/counts_residential 12
+hadoop jar FindDistinctAndCount.jar FindDistinctAndCount project/DOB_Permit_Issuance_Cleaned project/counts_work_type 13
+hadoop jar FindDistinctAndCount.jar FindDistinctAndCount project/DOB_Permit_Issuance_Cleaned project/counts_permit_status 14
+hadoop jar FindDistinctAndCount.jar FindDistinctAndCount project/DOB_Permit_Issuance_Cleaned project/counts_filing_status 15
+hadoop jar FindDistinctAndCount.jar FindDistinctAndCount project/DOB_Permit_Issuance_Cleaned project/counts_permit_type 16
+hadoop jar FindDistinctAndCount.jar FindDistinctAndCount project/DOB_Permit_Issuance_Cleaned project/counts_nta 28
+
+//compile and run the min/max analysis on a couple of columns
+//from inside the MinMaxProfile directory
+javac -classpath `hadoop classpath` *.java
+jar cvf MinMaxProfile.jar *.class
+hadoop jar MinMaxProfile.jar MinMaxProfile project/DOB_Permit_Issuance_Cleaned project/minmax_bin 1 -1
+hadoop jar MinMaxProfile.jar MinMaxProfile project/DOB_Permit_Issuance_Cleaned project/minmax_job_num 4 -1
+hadoop jar MinMaxProfile.jar MinMaxProfile project/DOB_Permit_Issuance_Cleaned project/minmax_zip_code 10 -1
+hadoop jar MinMaxProfile.jar MinMaxProfile project/DOB_Permit_Issuance_Cleaned project/minmax_latitude 24 -1
+hadoop jar MinMaxProfile.jar MinMaxProfile project/DOB_Permit_Issuance_Cleaned project/minmax_longitude 25 -1
+
+//run min/max analysis based on borough
+hadoop jar MinMaxProfile.jar MinMaxProfile project/DOB_Permit_Issuance_Cleaned project/minmax_zip_per_borough 10 0
+hadoop jar MinMaxProfile.jar MinMaxProfile project/DOB_Permit_Issuance_Cleaned project/minmax_latitude_per_borough 24 0
+hadoop jar MinMaxProfile.jar MinMaxProfile project/DOB_Permit_Issuance_Cleaned project/minmax_longitude_per_borough 25 0
+
+//compile and run the min/max analysis for dates on the date columns
+//from inside the MinMaxDateProfile directory
+javac -classpath `hadoop classpath` *.java
+jar cvf MinMaxDateProfile.jar *.class
+hadoop jar MinMaxDateProfile.jar MinMaxDateProfile project/DOB_Permit_Issuance_Cleaned project/minmax_filing_date 19 -1
+hadoop jar MinMaxDateProfile.jar MinMaxDateProfile project/DOB_Permit_Issuance_Cleaned project/minmax_issuance_date 20 -1
+hadoop jar MinMaxDateProfile.jar MinMaxDateProfile project/DOB_Permit_Issuance_Cleaned project/minmax_expiration_date 21 -1
+hadoop jar MinMaxDateProfile.jar MinMaxDateProfile project/DOB_Permit_Issuance_Cleaned project/minmax_start_date 22 -1
+
+//copy the results over
+//from inside the Outputs and relevant subdirectory
+hadoop fs -get project/counts_borough
+hadoop fs -get project/counts_job_type
+hadoop fs -get project/counts_residential
+hadoop fs -get project/counts_work_type
+hadoop fs -get project/counts_permit_status
+hadoop fs -get project/counts_filing_status
+hadoop fs -get project/counts_permit_type
+hadoop fs -get project/counts_nta
+
+hadoop fs -get project/minmax_bin
+hadoop fs -get project/minmax_job_num
+hadoop fs -get project/minmax_zip_code
+hadoop fs -get project/minmax_latitude
+hadoop fs -get project/minmax_longitude
+
+hadoop fs -get project/minmax_zip_per_borough
+hadoop fs -get project/minmax_latitude_per_borough
+hadoop fs -get project/minmax_longitude_per_borough
+
+hadoop fs -get project/minmax_filing_date
+hadoop fs -get project/minmax_issuance_date
+hadoop fs -get project/minmax_expiration_date
+hadoop fs -get project/minmax_start_date
+
+
+//post cleaning changes
+//compile and run the ColumnFilterTwo for the Housing Database
+javac -classpath `hadoop classpath` *.java
+jar cvf ColumnFilterTwo.jar *.class
+hadoop jar ColumnFilterTwo.jar ColumnFilterTwo project/HousingDB_post2010_inactive_included.csv project/HousingDB_Cleaned_Inactive_Included
+hadoop jar ColumnFilterTwo.jar ColumnFilterTwo project-test/HousingDB_Test_Set.csv project-test/HousingDB_cleaned
+
+
+//find malformed dates
+javac -classpath `hadoop classpath` *.java
+jar cvf FindMalformedDates.jar *.class
+hadoop jar FindMalformedDates.jar FindMalformedDates project/DOB_Permit_Issuance_20231203.csv project/test3

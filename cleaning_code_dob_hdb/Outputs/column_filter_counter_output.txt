@@ -1,0 +1,28 @@
+ColumnFilterMapper$LINE_COUNTER
+        Invalid=121756
+        Valid=3836283
+HeaderCounter
+        DiscardedHeader=1
+InvalidDateOrderCounter
+        InvalidDateOrder=3836
+InvalidValueDiscardCounter
+        InvalidDate=619
+        InvalidZipCode=4227
+MalformedDiscardCounter
+        MalformedDate25=89587
+        MalformedDate28=22
+MissingDiscardCounter
+        MissingValue10=9
+        MissingValue11=1613
+        MissingValue12=504
+        MissingValue18=11174
+        MissingValue20=1
+        MissingValue25=1
+        MissingValue28=10
+        MissingValue3=4
+        MissingValue56=9655
+        MissingValue9=493
+File Input Format Counters 
+        Bytes Read=1518875295
+File Output Format Counters 
+        Bytes Written=791389214

@@ -64,15 +64,34 @@ GROUP BY completion_year
 ORDER BY completion_year DESC;
 
 ---find units per year
-SELECT d.zip_code, SUM(h.class_a_net) as new_units
-FROM housing_data_inactive_included h
-INNER JOIN dob_data d on h.building_identification_number = d.bin
-WHERE h.job_status = 5 AND h.residFlag = true AND h.completion_year > '2020'
-GROUP BY d.zip_code
-ORDER BY new_units DESC;
+SELECT SUM(class_a_net) as new_units ---difference between class_a_prop and class_a_init
+FROM housing_data_inactive_included
+WHERE job_status = 5 AND residFlag = true
+GROUP BY completion_year
+ORDER BY completion_year DESC;
 
----find new units per year per borough
+SELECT building_identification_number, count(*) as entries
+FROM housing_data_inactive_included
+WHERE job_status = 5 AND residFlag = true AND completion_year > '2020'
+GROUP BY building_identification_number
+ORDER BY entries DESC;
 
+SELECT * from housing_data_inactive_included
+WHERE building_identification_number = 4466645;
+
+---find new units per borough (past 3 years)
+SELECT borough, SUM(class_a_net) as new_units ---difference between class_a_prop and class_a_init
+FROM housing_data_inactive_included
+WHERE job_status = 5 AND residFlag = true AND completion_year > '2020'
+GROUP BY borough
+ORDER BY borough DESC;
+
+---find planned new units per borough (past 3 years)
+SELECT borough, SUM(class_a_net) as planned_new_units ---difference between class_a_prop and class_a_init
+FROM housing_data_inactive_included
+WHERE job_status = 3 AND residFlag = true AND permit_year > '2020'
+GROUP BY borough
+ORDER BY borough DESC;
 
 --find new units since 2020 per zip code
 WITH dob_zip AS (

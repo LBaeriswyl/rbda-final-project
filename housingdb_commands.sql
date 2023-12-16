@@ -98,13 +98,25 @@ WITH dob_zip AS (
   SELECT bin, max(zip_code) as zip_code
   FROM dob_data
   GROUP BY bin
-)
+), new_units AS (
 SELECT d.zip_code, SUM(h.class_a_net) as new_units
 FROM housing_data_inactive_included h
 INNER JOIN dob_zip d on h.building_identification_number = d.bin
 WHERE h.job_status = 5 AND h.residFlag = true AND h.completion_year > '2020'
 GROUP BY d.zip_code
-ORDER BY new_units DESC;
+ORDER BY new_units DESC
+), planned_new_units AS (
+SELECT d.zip_code, SUM(h.class_a_net) as new_units
+FROM housing_data_inactive_included h
+INNER JOIN dob_zip d on h.building_identification_number = d.bin
+WHERE h.job_status = 3 AND h.residFlag = true AND h.permit_year > '2020'
+GROUP BY d.zip_code
+ORDER BY new_units DESC
+)
+SELECT n.zip_code, n.new_units, p.new_units as planned_new_units
+FROM new_units n
+INNER JOIN planned_new_units p on n.zip_code = p.zip_code
+ORDER BY n.new_units DESC;
 
 --find planned new units since 2020 per zip code
 WITH dob_zip AS (
